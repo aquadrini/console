@@ -1,0 +1,9 @@
+export ZOOCFG=zoo1.cfg
+export ZOO_LOG_DIR=/tmp/zookeeper1/log
+./zkServer.sh start
+export ZOOCFG=zoo2.cfg
+export ZOO_LOG_DIR=/tmp/zookeeper2/log
+./zkServer.sh start
+export ZOOCFG=zoo3.cfg
+export ZOO_LOG_DIR=/tmp/zookeeper3/log
+./zkServer.sh start

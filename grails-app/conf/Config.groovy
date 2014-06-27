@@ -65,13 +65,25 @@ environments {
 
 }
 
+zookeeper {
+    hosts = [
+        [host: "127.0.0.1", port: 2181],
+        [host: "127.0.0.1", port: 2182],
+        [host: "127.0.0.1", port: 2183]
+    ]
+    defaultTimeout = 10000
+    jobPrefix = '/jobs/'
+
+}
+
 // log4j configuration
 log4j = {
     // Example of changing the log pattern for the default console
     // appender:
     //
     appenders {
-        console name:'stdout', layout:pattern(conversionPattern: '[%-3p] [%d{yyyy/MM/dd HH:mm:ss}] [%c{1}]: %m%n')
+        'null' name: 'stacktrace'
+        console name: 'stdout', layout:pattern(conversionPattern: '[%-3p] [%d{yyyy/MM/dd HH:mm:ss}] [%c{1}]: %m%n')
     }
 
     error  'org.codehaus.groovy.grails.web.servlet',  //  controllers
