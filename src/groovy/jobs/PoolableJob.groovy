@@ -51,7 +51,9 @@ class PoolableJob extends Configurable {
                 pool = new ExecutorCompletionService(executors)
                 workers = Collections.synchronizedList(getFromConfig('threads').collect { getWorker(it.id, it.data) })
                 workers.each { pool.submit(it) }
-                isStarted = true
+                synchronized(shutdownLock) {
+                    isStarted = true
+                }
                 return
             }
         }
@@ -65,16 +67,17 @@ class PoolableJob extends Configurable {
         try {
             if (lockOnConfig()) {
                 workers*.stop()
-                if (waitForThreads()) {
-                    executors?.shutdown()
-                    if (!executors?.awaitTermination(poolTimeout, TimeUnit.MILLISECONDS)) {
-                        executors?.shutdownNow()
-                        return executors?.awaitTermination(poolTimeout, TimeUnit.MILLISECONDS)
-                    }
-                    return true
-                } else
-                    return false
+                waitForThreads()
+                executors?.shutdown()
+                if (!executors?.awaitTermination(poolTimeout, TimeUnit.MILLISECONDS)) {
+                    executors?.shutdownNow()
+                    return executors?.awaitTermination(poolTimeout, TimeUnit.MILLISECONDS)
+                }
+                return true
             } else
+                return false
+        } catch (Exception e) {
+                log.error "Exception waiting for threads in $name", GrailsUtil.sanitize(e)
                 return false
         } finally {
             unlockFromConfig()
@@ -104,16 +107,10 @@ class PoolableJob extends Configurable {
         }
     }
 
-    Boolean waitForThreads() {
-        try {
-            workers.size().times {
-                Integer id = pool.poll()?.get(waitTimeout, TimeUnit.MILLISECONDS)
-                log.info "Thread $id finished in $name"
-            }
-            return true
-        } catch (Exception e) {
-            log.error "Exception waiting for threads in $name", GrailsUtil.sanitize(e)
-            return false
+    void waitForThreads() {
+        workers.size().times {
+            Integer id = pool.poll()?.get(waitTimeout, TimeUnit.MILLISECONDS)
+            log.info "Thread $id finished in $name"
         }
     }
 

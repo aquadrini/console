@@ -55,7 +55,11 @@ abstract class Configurable implements DataListener<String> {
             } else
                 return false
         } finally {
-            unlockFromConfig()
+            try {
+                unlockFromConfig()
+            } catch (IllegalMonitorStateException e) {
+                log.warn "Read lock already released for $name in ${Thread.currentThread().id}"
+            }
         }
     }
 
