@@ -48,11 +48,15 @@ abstract class Configurable implements DataListener<String> {
     }
 
     Boolean destroy() {
-        if (canShutdown() && lockOnConfig()) {
-            monitor.shutdown()
-            return destroyArtifacts()
-        } else
-            return false
+        try {
+            if (canShutdown() && lockOnConfig()) {
+                monitor.shutdown()
+                return destroyArtifacts()
+            } else
+                return false
+        } finally {
+            unlockFromConfig()
+        }
     }
 
     def getFromConfig(String key) {
@@ -74,7 +78,6 @@ abstract class Configurable implements DataListener<String> {
     void unlockFromConfig() {
         lock.readLock().unlock()
     }
-
 
     void process(String data) {
         boolean s = lock.writeLock().tryLock(WRITE_TIMEOUT, TimeUnit.MILLISECONDS)
