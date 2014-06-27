@@ -34,7 +34,8 @@ abstract class Configurable implements DataListener<String> {
     }
 
     abstract void rebuild()
-    abstract void destroyArtifacts()
+    abstract Boolean destroyArtifacts()
+    abstract Boolean canShutdown()
 
     String getHost() {
         Process proc = 'hostname'.execute()
@@ -46,9 +47,12 @@ abstract class Configurable implements DataListener<String> {
         monitor.watch()
     }
 
-    void destroy() {
-        monitor.shutdown()
-        destroyArtifacts()
+    Boolean destroy() {
+        if (canShutdown() && lockOnConfig()) {
+            monitor.shutdown()
+            return destroyArtifacts()
+        } else
+            return false
     }
 
     def getFromConfig(String key) {

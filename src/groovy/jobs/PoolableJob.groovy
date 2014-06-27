@@ -1,10 +1,12 @@
 package jobs
 
-import jobs.Configurable
+import grails.util.GrailsUtil
 import jobs.builders.WorkerBuilder
 import jobs.workers.Worker
 import org.apache.log4j.Logger
 
+import java.util.concurrent.CompletionService
+import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -12,11 +14,15 @@ import java.util.concurrent.TimeUnit
 
 class PoolableJob extends Configurable {
 
-    ExecutorService pool
+    CompletionService pool
+    ExecutorService executors
     long poolTimeout = 1000 * 10l
+    long waitTimeout = 1000 * 60l
     List<Worker> workers
     Closure process
     WorkerBuilder builder
+    Boolean isStarted
+    Object shutdownLock = new Object()
 
     static Logger log = Logger.getLogger(this)
 
@@ -25,6 +31,7 @@ class PoolableJob extends Configurable {
         super(name)
         this.process = process
         this.builder = builder
+        isStarted = false
     }
 
     ExecutorService createPool(List threadConfig) {
@@ -37,33 +44,77 @@ class PoolableJob extends Configurable {
 
     @Override
     void rebuild() {
-        destroyArtifacts()
-        pool = createPool(getFromConfig('threads'))
-        workers = Collections.synchronizedList(getFromConfig('threads').collect { getWorker(it.id, it.data) })
-        workers.each {pool.submit(it)}
+        int retries = 5
+        while (retries--) {
+            if (!pool || destroyArtifacts()) {
+                executors = createPool(getFromConfig('threads'))
+                pool = new ExecutorCompletionService(executors)
+                workers = Collections.synchronizedList(getFromConfig('threads').collect { getWorker(it.id, it.data) })
+                workers.each { pool.submit(it) }
+                isStarted = true
+                return
+            }
+        }
+
+        log.error "Could not stop previous instances for $name"
     }
 
 
     @Override
-    void destroyArtifacts() {
-        workers*.stop()
-        pool?.shutdown()
-        if (!pool?.awaitTermination(poolTimeout, TimeUnit.MILLISECONDS))
-            pool?.shutdownNow()
-    }
-
-    void notifyTermination(Integer id) {
+    Boolean destroyArtifacts() {
         try {
             if (lockOnConfig()) {
-                workers.remove(workers.find { it.id == id })
-                Worker worker = getWorker(id, getFromConfig('threads').find { it.id == id }.data)
-                workers << worker
-                pool.submit(worker)
-            } else {
-                log.error "Could not obtains lock for thread ${Thread.currentThread} restart."
-            }
+                workers*.stop()
+                if (waitForThreads()) {
+                    executors?.shutdown()
+                    if (!executors?.awaitTermination(poolTimeout, TimeUnit.MILLISECONDS)) {
+                        executors?.shutdownNow()
+                        return executors?.awaitTermination(poolTimeout, TimeUnit.MILLISECONDS)
+                    }
+                    return true
+                } else
+                    return false
+            } else
+                return false
         } finally {
             unlockFromConfig()
         }
     }
+
+    void notifyTermination(Integer id) {
+        synchronized(shutdownLock) {
+            try {
+                if (lockOnConfig()) {
+                    workers.remove(workers.find { it.id == id })
+                    Worker worker = getWorker(id, getFromConfig('threads').find { it.id == id }.data)
+                    workers << worker
+                    pool.submit(worker)
+                } else {
+                    log.error "Could not obtains lock for thread ${Thread.currentThread().id} restart."
+                }
+            } finally {
+                unlockFromConfig()
+            }
+        }
+    }
+
+    Boolean canShutdown() {
+        synchronized (shutdownLock) {
+            return isStarted
+        }
+    }
+
+    Boolean waitForThreads() {
+        try {
+            workers.size().times {
+                Integer id = pool.poll()?.get(waitTimeout, TimeUnit.MILLISECONDS)
+                log.info "Thread $id finished in $name"
+            }
+            return true
+        } catch (Exception e) {
+            log.error "Exception waiting for threads in $name", GrailsUtil.sanitize(e)
+            return false
+        }
+    }
+
 }

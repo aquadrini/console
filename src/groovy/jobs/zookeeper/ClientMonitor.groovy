@@ -86,8 +86,10 @@ class ClientMonitor implements Watcher, StatCallback {
             }
         }
 
-        if (b && !Arrays.equals(data, b))
+        if (b && !Arrays.equals(data, b)) {
+            data = b
             listener.process(new String(b))
+        }
 
     }
 

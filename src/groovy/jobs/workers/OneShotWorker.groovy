@@ -1,5 +1,6 @@
 package jobs.workers
 
+import grails.util.GrailsUtil
 import jobs.PoolableJob
 
 class OneShotWorker extends Worker {
@@ -12,7 +13,7 @@ class OneShotWorker extends Worker {
         try {
             process(id, config)
         } catch (Exception e) {
-            log.error "Exception during message processing.", GrailsUtil.deepSanitize(e)
+            log.error "Exception during message processing.", GrailsUtil.sanitize(e)
             parent.notifyTermination(id)
         }
     }
